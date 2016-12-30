@@ -1,0 +1,11 @@
+title = "Example Configuration"
+
+[mqtt]
+host = '127.0.0.1'
+port = '1883'
+
+[matrix]
+home-server = 'https://matrix.org'
+user = 'username'
+password = 'password'
+room = '!room-id:domain (or) #room-alias:domain'
