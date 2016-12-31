@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/matrix-org/gomatrix"
+	"github.com/rs/xid"
 	"github.com/wired-home/go-home/events"
 )
 
@@ -16,7 +17,9 @@ type Opts struct {
 }
 
 //Run - blah blah blah
-func (c Opts) Run(ch <-chan events.Event) {
+func (c Opts) Run(inbound chan<- event.Event, outbound <-chan event.Event) {
+	uuid := xid.New().String()
+
 	creds := &gomatrix.ReqLogin{
 		Type:     "m.login.password",
 		User:     c.User,
@@ -28,7 +31,7 @@ func (c Opts) Run(ch <-chan events.Event) {
 
 	syncer := cli.Syncer.(*gomatrix.DefaultSyncer)
 	syncer.OnEventType("m.room.message", func(ev *gomatrix.Event) {
-		fmt.Printf("[Matrix]: %s: %s\n", ev.Sender, ev.Content["body"])
+		fmt.Printf("[Matrix:%s]: %s: %s\n", uuid, ev.Sender, ev.Content["body"])
 	})
 
 	var roomID string
@@ -40,8 +43,8 @@ func (c Opts) Run(ch <-chan events.Event) {
 
 	go func() {
 		for {
-			event := <-ch
-			msg := fmt.Sprintf("%s: %s", event.Name, event.Message)
+			event := <-outbound
+			msg := fmt.Sprintf("%s: %s", event.Name, event.Value)
 			cli.SendText(roomID, msg)
 		}
 	}()

@@ -1,7 +1,8 @@
-package events
+package event
 
 // Event - MQTT event
 type Event struct {
-	Message string
-	Name    string
+	Value string
+	Name  string
+	UUID  string
 }

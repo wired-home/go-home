@@ -46,10 +46,23 @@ func main() {
 
 	conf := readConfig(*confFile)
 
-	events := make(chan events.Event, 256)
+	inbound := make(chan event.Event, 64)
+	var outbounds = []chan event.Event{
+		make(chan event.Event, 64),
+		make(chan event.Event, 64),
+	}
 
-	go conf.Mqtt.Run(events)
-	go conf.Matrix.Run(events)
+	go func() {
+		for {
+			event := <-inbound
+			for i, _ := range outbounds {
+				outbounds[i] <- event
+			}
+		}
+	}()
+
+	go conf.Mqtt.Run(inbound, outbounds[0])
+	go conf.Matrix.Run(inbound, outbounds[1])
 
 	select {}
 }

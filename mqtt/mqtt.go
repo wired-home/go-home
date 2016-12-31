@@ -7,6 +7,7 @@ import (
 	"time"
 
 	MQTT "github.com/eclipse/paho.mqtt.golang"
+	"github.com/rs/xid"
 	"github.com/wired-home/go-home/events"
 )
 
@@ -17,7 +18,9 @@ type Opts struct {
 }
 
 // Run - returns mqtt client
-func (c Opts) Run(ch chan<- events.Event) {
+func (c Opts) Run(inbound chan<- event.Event, outbound <-chan event.Event) {
+	uuid := xid.New().String()
+
 	hostname, _ := os.Hostname()
 
 	server := fmt.Sprintf("tcp://%s:%s", c.Host, c.Port)
@@ -31,12 +34,13 @@ func (c Opts) Run(ch chan<- events.Event) {
 	}
 
 	onMessageReceived := func(client MQTT.Client, message MQTT.Message) {
-		ch <- events.Event{
-			Name:    message.Topic(),
-			Message: string(message.Payload()),
+		inbound <- event.Event{
+			Name:  message.Topic(),
+			Value: string(message.Payload()),
+			UUID:  uuid,
 		}
 
-		fmt.Printf("[MQTT]: %s: %s\n", message.Topic(), message.Payload())
+		fmt.Printf("[MQTT:%s]: %s: %s\n", uuid, message.Topic(), message.Payload())
 	}
 
 	connOpts.AddBroker(server)
@@ -53,4 +57,12 @@ func (c Opts) Run(ch chan<- events.Event) {
 	} else {
 		fmt.Printf("Connected to %s\n", server)
 	}
+
+	go func() {
+		for {
+			event := <-outbound
+			fmt.Printf("[Drop:%s]: %s: %s\n", uuid, event.Name, event.Value)
+		}
+	}()
+
 }
