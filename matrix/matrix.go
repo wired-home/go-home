@@ -2,6 +2,7 @@ package matrix
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/matrix-org/gomatrix"
 	"github.com/rs/xid"
@@ -31,7 +32,16 @@ func (c Opts) Run(inbound chan<- event.Event, outbound <-chan event.Event) {
 
 	syncer := cli.Syncer.(*gomatrix.DefaultSyncer)
 	syncer.OnEventType("m.room.message", func(ev *gomatrix.Event) {
-		fmt.Printf("[Matrix:%s]: %s: %s\n", uuid, ev.Sender, ev.Content["body"])
+		if ev.Sender != cli.UserID {
+			fmt.Printf("[Matrix:%s]: %s: %s\n", uuid, ev.Sender, ev.Content["body"])
+			split := strings.Split(ev.Content["body"].(string), ":")
+			name, value := split[0], split[1]
+			inbound <- event.Event{
+				Name:  name,
+				Value: value,
+				UUID:  uuid,
+			}
+		}
 	})
 
 	var roomID string
@@ -44,7 +54,11 @@ func (c Opts) Run(inbound chan<- event.Event, outbound <-chan event.Event) {
 	go func() {
 		for {
 			event := <-outbound
-			msg := fmt.Sprintf("%s: %s", event.Name, event.Value)
+			if event.UUID == uuid {
+				fmt.Printf("[Drop:%s]: %s: %s\n", uuid, event.Name, event.Value)
+				continue
+			}
+			msg := fmt.Sprintf("%s:%s", event.Name, event.Value)
 			cli.SendText(roomID, msg)
 		}
 	}()

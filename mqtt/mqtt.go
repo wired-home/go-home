@@ -20,18 +20,16 @@ type Opts struct {
 // Run - returns mqtt client
 func (c Opts) Run(inbound chan<- event.Event, outbound <-chan event.Event) {
 	uuid := xid.New().String()
-
 	hostname, _ := os.Hostname()
-
 	server := fmt.Sprintf("tcp://%s:%s", c.Host, c.Port)
+	clientid := hostname + strconv.Itoa(time.Now().Second())
 	topic := "#"
 	qos := 0
 
-	connOpts := &MQTT.ClientOptions{
-		ClientID:             hostname + strconv.Itoa(time.Now().Second()),
-		CleanSession:         true,
-		MaxReconnectInterval: 1 * time.Second,
-	}
+	connOpts := MQTT.NewClientOptions().
+		AddBroker(server).
+		SetClientID(clientid).
+		SetCleanSession(true)
 
 	onMessageReceived := func(client MQTT.Client, message MQTT.Message) {
 		inbound <- event.Event{
@@ -43,7 +41,6 @@ func (c Opts) Run(inbound chan<- event.Event, outbound <-chan event.Event) {
 		fmt.Printf("[MQTT:%s]: %s: %s\n", uuid, message.Topic(), message.Payload())
 	}
 
-	connOpts.AddBroker(server)
 	connOpts.OnConnect = func(c MQTT.Client) {
 		if token := c.Subscribe(topic, byte(qos), onMessageReceived); token.Wait() && token.Error() != nil {
 			panic(token.Error())
@@ -61,7 +58,14 @@ func (c Opts) Run(inbound chan<- event.Event, outbound <-chan event.Event) {
 	go func() {
 		for {
 			event := <-outbound
-			fmt.Printf("[Drop:%s]: %s: %s\n", uuid, event.Name, event.Value)
+			if event.UUID == uuid {
+				fmt.Printf("[Drop:%s]: %s: %s\n", uuid, event.Name, event.Value)
+				continue
+			}
+			if token := client.Publish(event.Name, byte(qos), true, event.Value); token.Wait() && token.Error() != nil {
+				fmt.Println(token.Error())
+			}
+			fmt.Printf("[PUB:%s]: %s: %s\n", uuid, event.Name, event.Value)
 		}
 	}()
 

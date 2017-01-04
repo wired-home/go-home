@@ -55,7 +55,7 @@ func main() {
 	go func() {
 		for {
 			event := <-inbound
-			for i, _ := range outbounds {
+			for i := range outbounds {
 				outbounds[i] <- event
 			}
 		}
