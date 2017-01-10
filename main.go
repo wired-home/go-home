@@ -12,6 +12,7 @@ import (
 	"github.com/wired-home/go-home/events"
 	"github.com/wired-home/go-home/matrix"
 	"github.com/wired-home/go-home/mqtt"
+	"github.com/wired-home/go-home/worker"
 )
 
 type config struct {
@@ -47,22 +48,26 @@ func main() {
 	conf := readConfig(*confFile)
 
 	inbound := make(chan event.Event, 64)
-	var outbounds = []chan event.Event{
-		make(chan event.Event, 64),
-		make(chan event.Event, 64),
+
+	mqtt := conf.Mqtt.NewWorker(inbound)
+	matrix := conf.Matrix.NewWorker(inbound)
+
+	mqtt.Run()
+	matrix.Run()
+
+	workers := []worker.Worker{
+		mqtt,
+		matrix,
 	}
 
 	go func() {
 		for {
-			event := <-inbound
-			for i := range outbounds {
-				outbounds[i] <- event
+			ev := <-inbound
+			for _, w := range workers {
+				w.Dispatch(ev)
 			}
 		}
 	}()
-
-	go conf.Mqtt.Run(inbound, outbounds[0])
-	go conf.Matrix.Run(inbound, outbounds[1])
 
 	select {}
 }

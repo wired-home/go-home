@@ -7,21 +7,35 @@ import (
 	"time"
 
 	MQTT "github.com/eclipse/paho.mqtt.golang"
-	"github.com/rs/xid"
 	"github.com/wired-home/go-home/events"
+	"github.com/wired-home/go-home/worker"
 )
 
-// Opts options for mqtt client
+// Opts for mqtt client from config file
 type Opts struct {
 	Host string `toml:"host"`
 	Port string `toml:"port"`
 }
 
+// Worker - MQTT worker
+type Worker struct {
+	worker.Core
+	opts Opts
+}
+
+// NewWorker - Create a new worker
+func (c Opts) NewWorker(inbound chan event.Event) *Worker {
+	worker := Worker{
+		opts: c,
+	}
+	worker.Init(inbound)
+	return &worker
+}
+
 // Run - returns mqtt client
-func (c Opts) Run(inbound chan<- event.Event, outbound <-chan event.Event) {
-	uuid := xid.New().String()
+func (w Worker) Run() {
 	hostname, _ := os.Hostname()
-	server := fmt.Sprintf("tcp://%s:%s", c.Host, c.Port)
+	server := fmt.Sprintf("tcp://%s:%s", w.opts.Host, w.opts.Port)
 	clientid := hostname + strconv.Itoa(time.Now().Second())
 	topic := "#"
 	qos := 0
@@ -32,13 +46,12 @@ func (c Opts) Run(inbound chan<- event.Event, outbound <-chan event.Event) {
 		SetCleanSession(true)
 
 	onMessageReceived := func(client MQTT.Client, message MQTT.Message) {
-		inbound <- event.Event{
-			Name:  message.Topic(),
-			Value: string(message.Payload()),
-			UUID:  uuid,
-		}
-
-		fmt.Printf("[MQTT:%s]: %s: %s\n", uuid, message.Topic(), message.Payload())
+		w.Put(
+			event.Event{
+				Name:  message.Topic(),
+				Value: string(message.Payload()),
+			},
+		)
 	}
 
 	connOpts.OnConnect = func(c MQTT.Client) {
@@ -57,15 +70,10 @@ func (c Opts) Run(inbound chan<- event.Event, outbound <-chan event.Event) {
 
 	go func() {
 		for {
-			event := <-outbound
-			if event.UUID == uuid {
-				fmt.Printf("[Drop:%s]: %s: %s\n", uuid, event.Name, event.Value)
-				continue
-			}
+			event := w.Get()
 			if token := client.Publish(event.Name, byte(qos), true, event.Value); token.Wait() && token.Error() != nil {
 				fmt.Println(token.Error())
 			}
-			fmt.Printf("[PUB:%s]: %s: %s\n", uuid, event.Name, event.Value)
 		}
 	}()
 
